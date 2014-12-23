@@ -1,0 +1,250 @@
+
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>Frame-Diff-Mirror</title>
+        <style>
+            body {
+                background:black;
+            }
+            video {
+                width:480px;
+                height:360px;
+                display:none;
+            }
+            canvas {
+                display:block;
+                margin-left:auto;
+                margin-right:auto;   
+            }
+
+        </style>
+    </head>
+    <body>
+        <!-- holds our video stream -->
+        <video id="video" autoplay="true"></video>
+        <!-- holds our latest frame to get the differences and colors of pixels -->
+        <canvas id="buffer" class"buffer"></canvas>
+        <!-- what we draw onto -->
+        <canvas id="output"></canvas>
+        <script>
+            /////////////////////////////////////////////////
+            /////////////////////////////////////////////////
+            /////////////////////////////////////////////////
+
+            navigator.getUserMedia = navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.getUserMedia ||  navigator.msGetUserMedia;
+
+            window.webkitURL = window.URL || window.webkitURL || window.mozURL || window.msURL;
+
+            video = document.getElementById("video");
+            buffer = document.getElementById("buffer");
+            output = document.getElementById("output");
+
+            var h = window.innerHeight;
+
+            buffer.width = 800;
+            buffer.height = 600;
+            output.width = buffer.width;
+            output.height = buffer.height;
+            output.style.height = h + 'px';
+            output.style.width = Math.ceil(h*1.33333) + 'px';//keep aspect ratio
+
+            buffer.style.display = "none";
+
+            var dim = 30;
+            var xStep = Math.floor(output.width/dim);
+            var yStep = Math.floor(output.height/dim);
+
+            /////////////////////////////////////////////////
+            /////////////////////////////////////////////////
+            /////////////////////////////////////////////////
+
+            function Square(){
+                //rotation along the z-axis (2D)
+                this.stepFeedback = (Math.random() * .02) + .93;
+                this.stepAmount = 0;
+                this.count = Math.random()*Math.PI; //start at random spot
+                this.swingFeedback = (Math.random() * .02) + .89;
+                this.swingAmount = 0.;
+
+                //fake rotation along the y-axis
+                this.wCount = Math.random()*Math.PI; //start at random spot
+                this.wStep = 0.3;
+                this.wFeedback = (Math.random() * .02) + .94;
+
+                //transparency feedback different for each square
+                this.fillFeedback = (Math.random() * .1) + .8999;
+            }
+
+            /////////////////////////////////////////////////
+            /////////////////////////////////////////////////
+            /////////////////////////////////////////////////
+
+
+            window.requestAnimFrame = (function(callback) {
+                return window.requestAnimationFrame || window.webkitRequestAnimationFrame || window.mozRequestAnimationFrame || window.oRequestAnimationFrame || window.msRequestAnimationFrame ||
+                function(callback) {
+                  window.setTimeout(callback, 1000 / 60);
+                };
+            })();
+
+            /////////////////////////////////////////////////
+            /////////////////////////////////////////////////
+            /////////////////////////////////////////////////
+
+            function start() {
+                var context = output.getContext('2d');
+                context.fillStyle = 'black';
+                context.fillRect(0,0,output.width,output.height);
+
+                context.fillStyle = 'grey';
+                context.font = 'bold 18px sans-serif';
+                context.fillText('please allow your camera to open', output.width*.6, output.height*.04);
+                context.font = 'bold 12px sans-serif';
+                context.fillText('if you are not prompted, try in a Chrome browser', output.width*.60, output.height*.07);
+                context.font = 'bold 12px sans-serif';
+                context.fillText('a software mirror, using webRTC and HTML5', output.width*.33, output.height*.5);
+
+                if (navigator.getUserMedia) {
+                    navigator.getUserMedia({video:true}, gotStream, function(error) {
+                        alert('couldn\'t get stream, try using Chrome?');
+                        console.log(error);
+                    });
+                } else {
+                    console.log('Native device media streaming (getUserMedia) not supported in this browser.');
+                }
+            }
+
+            /////////////////////////////////////////////////
+            /////////////////////////////////////////////////
+            /////////////////////////////////////////////////
+
+            function gotStream(stream) {
+                video.src = webkitURL.createObjectURL(stream);
+
+                //clear the text from the screen
+                var outContext = output.getContext('2d');
+                outContext.fillStyle = 'rgba(0,0,0,1)';
+                outContext.fillRect(0,0,output.width,output.height);
+
+                frameDiff(); //start the animation loop
+            }
+
+
+            /////////////////////////////////////////////////
+            /////////////////////////////////////////////////
+            /////////////////////////////////////////////////
+
+            //variables for controlling the dimming in at the beginning
+            var dimInCount = 0;
+            var dimInTime = 200;
+
+            function frameDiff() {
+                var buffContext = buffer.getContext('2d');
+                var outContext = output.getContext('2d');
+
+                //background
+                outContext.fillStyle = 'rgba(0,0,0,.5)'; //transparency
+                outContext.fillRect(0,0,output.width,output.height);
+
+                //load old frame's pixels
+                var oldFrame = buffContext.getImageData(0, 0, buffer.width, buffer.height).data;
+                //draw the new frame
+                buffContext.drawImage(video, 0, 0, buffer.width, buffer.height);
+                //load new frame's pixels
+                var newFrame = buffContext.getImageData(0, 0, buffer.width, buffer.height).data;
+
+                //counter for our squares
+                var si = 0;
+
+                //loop through coordinates based of x and y position
+                for(var x=xStep/2;x<output.width;x+=xStep){
+                    for(var y=0;y<output.height;y+=yStep){
+                        if(si < squares.length){
+                            //get the pixels index for it's red value
+                            var i = ((output.width * y) + (output.width-1-x))  * 4;
+                            //get the absolute difference of this pixel from the previous frame's red pixel
+                            var diff = Math.abs(oldFrame[i]-newFrame[i]);
+
+                            //trigger its sine steppers to start gong fast
+                            if(diff>20){
+                                squares[si].swingAmount = .3;
+                                squares[si].stepAmount = .8;
+                                squares[si].wStep = .6;
+                                squares[si].fill = 255;
+                                squares[si].fillFeedback = (Math.random() * .1) + .8999;
+                            }
+
+                            //i found this prevented thefill from bleeding to follow squares
+                            outContext.fillStyle = "rgba(0,0,0,1)";
+                            outContext.strokeStyle = "rgba(0,0,0,1)";
+
+                            //calculate the fill amount for this shape
+                            var thisFill = squares[si].fill * (dimInCount/dimInTime) * (dimInCount/dimInTime);
+                            outContext.strokeStyle = "rgba(" + newFrame[i] + "," + newFrame[i+1] + "," + newFrame[i+2] + "," + thisFill +")";
+                            outContext.lineWidth = 2;
+
+                            //rotation on z-axis
+                            var tempRotateAmount = Math.sin(squares[si].count) * (Math.PI*squares[si].swingAmount);
+                            //fake y-axis rotation
+                            var tempWidth = Math.sin(squares[si].wCount) * xStep;
+
+                            //move to our shape and draw it
+                            outContext.translate(x,y);
+                            outContext.rotate(tempRotateAmount);
+                            outContext.strokeRect(-tempWidth*.45,0,tempWidth*.9,yStep*.9);
+                            outContext.rotate(-tempRotateAmount);
+                            outContext.translate(-x,-y);
+
+                            //increment the sin counters
+                            squares[si].count += squares[si].stepAmount;
+                            squares[si].wCount += squares[si].wStep;
+
+                            //diminish the step amounts with feedback
+                            squares[si].swingAmount *= squares[si].swingFeedback;
+                            squares[si].stepAmount *= squares[si].stepFeedback;
+                            squares[si].wStep *= squares[si].wFeedback;
+                            squares[si].fill *= squares[si].fillFeedback;
+
+                            si++;
+                        }
+                    }
+                }
+                outContext.fillStyle = "grey";
+                outContext.font = 'regular 12px sans-serif';
+                outContext.fillText('andysigler.com', output.width*.84, output.height*.98);
+
+                requestAnimFrame(function() {
+                    frameDiff();
+                });
+
+                if(dimInCount<dimInTime){
+                    dimInCount++;
+                }
+            }
+
+            /////////////////////////////////////////////////
+            /////////////////////////////////////////////////
+            /////////////////////////////////////////////////
+
+            var squares = [];
+
+            //create all our square objects based off our set dimensions at the top
+            for(var i=0;i<dim*dim;i++){
+                squares[i] = new Square();
+            }
+
+            /////////////////////////////////////////////////
+            /////////////////////////////////////////////////
+            /////////////////////////////////////////////////
+
+            window.onload = start();
+        </script>
+<<<<<<< HEAD:index.html
+    </body>
+</html>
+=======
+	</body>
+</html>
+>>>>>>> 9b151a451765554d753389c3d7f6582845de34b9:mirror.html
