@@ -16,7 +16,7 @@
             canvas {
                 display:block;
                 margin-left:auto;
-                margin-right:auto;   
+                margin-right:auto;
             }
 
         </style>
@@ -131,7 +131,12 @@
             /////////////////////////////////////////////////
 
             function gotStream(stream) {
-                video.src = webkitURL.createObjectURL(stream);
+                try {
+                    video.src = webkitURL.createObjectURL(stream);
+                }
+                catch (err) {
+                    video.srcObject = stream;
+                }
 
                 //clear the text from the screen
                 var outContext = output.getContext('2d');
